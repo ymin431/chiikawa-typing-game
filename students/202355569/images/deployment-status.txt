@@ -1,0 +1,18 @@
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/typing-garden   1/1     1            1           68s
+
+NAME                                 READY   STATUS    RESTARTS   AGE
+pod/typing-garden-689565497d-dtqtg   1/1     Running   0          68s
+
+NAME                        TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                               AGE
+service/modelmesh-serving   ClusterIP   None           <none>        8033/TCP,8008/TCP,8443/TCP,2112/TCP   73m
+service/typing-garden       ClusterIP   172.30.93.98   <none>        8080/TCP                              67s
+
+NAME                                     HOST/PORT                                                      PATH   SERVICES        PORT   TERMINATION     WILDCARD
+route.route.openshift.io/typing-garden   typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com          typing-garden   http   edge/Redirect   None
+
+NAME                                       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/typing-garden-data   Bound    pvc-903ec135-4adc-4a82-8f33-8eba2a2a4ee9   1Gi        RWO            gp3            <unset>                 68s
+
+Full delete/apply: PASS
+PVC session persistence across restart: PASS

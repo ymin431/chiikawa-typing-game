@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#bfe6f6"><meta name="description" content="TYPEFALL — 하늘에서 내려오는 먼작귀들을 타자로 잡는 3D 산성비 타자 게임.">
+<title>TYPEFALL — 먼작귀 타이핑</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body class="loading">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 7 4.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.6 3.5 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></symbol>
+ <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor" stroke="none"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+ <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" fill="currentColor" stroke="none"/><path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+ <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="3.6" height="14" rx="1.2"/><rect x="13.9" y="5" width="3.6" height="14" rx="1.2"/></symbol>
+ <symbol id="i-board" viewBox="0 0 24 24"><path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+ <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+</svg>
+
+<canvas id="stage" aria-hidden="true"></canvas>
+<div id="labels" class="labels" aria-label="떨어지는 단어"></div>
+<div class="flash" id="flash" aria-hidden="true"></div>
+
+<aside class="side" id="side" aria-label="랭킹과 방명록">
+ <div class="wordmark"><b>TYPEFALL</b><span>먼작귀 타이핑</span></div>
+ <div class="tabs" role="tablist">
+  <button role="tab" id="tab-rank" aria-selected="true" data-tab="rank">랭킹</button>
+  <button role="tab" id="tab-guest" aria-selected="false" data-tab="guest">방명록</button>
+ </div>
+ <section class="tab-panel" id="panel-rank" role="tabpanel" aria-labelledby="tab-rank">
+  <div class="filters">
+   <div class="chips" role="group" aria-label="랭킹 난이도"><button data-board-difficulty="easy">쉬움</button><button data-board-difficulty="normal">보통</button><button data-board-difficulty="hard">어려움</button></div>
+   <div class="chips" role="group" aria-label="랭킹 언어"><button data-board-language="ko">KO</button><button data-board-language="en">EN</button></div>
+  </div>
+  <ol class="rows rank" id="board"></ol>
+ </section>
+ <section class="tab-panel" id="panel-guest" role="tabpanel" aria-labelledby="tab-guest" hidden>
+  <ul class="rows notes" id="guestbook"></ul>
+ </section>
+ <button class="side-close" id="side-close" aria-label="닫기"><svg><use href="#i-close"/></svg></button>
+</aside>
+
+<div class="corner">
+ <button class="icon" id="side-open" aria-label="랭킹·방명록 열기"><svg><use href="#i-board"/></svg></button>
+ <button class="icon" id="sound-toggle" aria-label="소리 끄기" aria-pressed="true"><svg><use href="#i-sound"/></svg></button>
+ <button class="icon" id="pause-button" aria-label="일시정지" hidden><svg><use href="#i-pause"/></svg></button>
+</div>
+
+<header class="hud" id="hud" hidden>
+ <span class="hearts" id="hearts" aria-label="남은 하트"></span>
+ <span class="hud-sep"></span>
+ <span class="hud-score"><b id="score">0</b><small>PTS</small></span>
+ <span class="hud-sep"></span>
+ <span class="hud-time" id="clock">60</span>
+</header>
+<div class="combo" id="combo" aria-live="polite"></div>
+
+<section class="stagewrap" id="start-screen">
+ <div class="hero">
+  <p class="eyebrow">먼작귀 타이핑 · 60초 챌린지</p>
+  <h1>TYPE<span>FALL</span></h1>
+  <p class="lead">하늘에서 내려오는 친구들이 잔디에 닿기 전에<br>단어를 입력하고 Enter.</p>
+  <div class="controls">
+   <div class="seg" role="group" aria-label="난이도"><button data-difficulty="easy">쉬움</button><button data-difficulty="normal">보통</button><button data-difficulty="hard">어려움</button></div>
+   <div class="seg" role="group" aria-label="언어"><button data-language="ko">한글</button><button data-language="en">English</button></div>
+  </div>
+  <button class="cta" id="start-button">게임 시작 <kbd>Enter</kbd></button>
+ </div>
+</section>
+
+<section class="stagewrap" id="countdown" hidden><div class="count" id="count"></div></section>
+
+<section class="modal" id="pause-screen" hidden>
+ <div class="sheet small">
+  <p class="eyebrow">PAUSED</p>
+  <h2 id="pause-title">잠시 멈춤</h2>
+  <p class="lead" id="pause-text">준비되면 이어서 해요.</p>
+  <button class="cta" id="resume-button">이어서 하기</button>
+  <button class="ghost" id="quit-button">그만하고 결과 보기</button>
+ </div>
+</section>
+
+<section class="modal" id="result-screen" hidden>
+ <div class="sheet result" role="dialog" aria-labelledby="result-kicker">
+  <div class="result-head">
+   <p class="eyebrow" id="result-kicker">RESULT</p>
+   <div class="big-score" id="result-score">0</div>
+   <div class="stats">
+    <div><b id="result-hits">0</b><span>잡은 친구</span></div>
+    <div><b id="result-accuracy">0%</b><span>정확도</span></div>
+    <div><b id="result-cpm">0</b><span>타/분</span></div>
+    <div><b id="result-combo">0</b><span>최대 콤보</span></div>
+   </div>
+  </div>
+  <form class="register" id="register-form" autocomplete="off">
+   <p class="field-label">프로필 캐릭터</p>
+   <div class="avatars" id="avatar-picker" role="radiogroup" aria-label="프로필 캐릭터"></div>
+   <div class="fields">
+    <input id="reg-name" maxlength="12" required placeholder="닉네임" aria-label="닉네임">
+    <textarea id="reg-message" maxlength="140" rows="2" placeholder="방명록에 한마디 (선택)" aria-label="방명록"></textarea>
+   </div>
+   <div class="register-foot">
+    <span class="note" id="register-note" role="status"></span>
+    <button type="submit" class="cta slim" id="register-button">랭킹 · 방명록 등록</button>
+   </div>
+  </form>
+  <div class="result-actions">
+   <button class="ghost" id="home-button">처음으로</button>
+   <button class="cta slim" id="retry-button">다시 하기</button>
+  </div>
+ </div>
+</section>
+
+<form class="typing" id="typing-form" autocomplete="off" hidden>
+ <input id="typing-input" aria-label="단어 입력" placeholder="단어 입력 후 Enter" maxlength="40" autocapitalize="off" spellcheck="false" disabled>
+ <kbd>↵</kbd>
+</form>
+<p class="feedback" id="feedback" role="status"></p>
+<div class="toast" id="toast" role="status" hidden></div>
+<noscript><p class="noscript">JavaScript를 켜면 게임을 할 수 있어요.</p></noscript>
+</body>
+</html>

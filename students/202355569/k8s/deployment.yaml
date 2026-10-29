@@ -1,0 +1,98 @@
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "typing-garden"
+spec:
+  replicas: 1
+  strategy:
+    type: "Recreate"
+  selector:
+    matchLabels:
+      app: "typing-garden"
+  template:
+    metadata:
+      labels:
+        app: "typing-garden"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: "RuntimeDefault"
+      containers:
+        -
+          name: "web"
+          image: "registry.access.redhat.com/ubi9/python-312@sha256:2c7a89f9f1e69f2a00036041ef744b45c8830bebcb2f7194f403ca93729bb0cc"
+          command:
+            - "python3"
+            - "/app/server.py"
+          ports:
+            -
+              containerPort: 8080
+              name: "http"
+          env:
+            -
+              name: "DATA_DIR"
+              value: "/data"
+            -
+              name: "PYTHONDONTWRITEBYTECODE"
+              value: "1"
+            -
+              name: "GAME_DURATION"
+              value: "60"
+            -
+              name: "GAME_LIVES"
+              value: "5"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "96Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          volumeMounts:
+            -
+              name: "app"
+              mountPath: "/app"
+              readOnly: true
+            -
+              name: "data"
+              mountPath: "/data"
+          startupProbe:
+            httpGet:
+              path: "/api/health"
+              port: "http"
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: "/api/health"
+              port: "http"
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: "/api/ready"
+              port: "http"
+            periodSeconds: 5
+      volumes:
+        -
+          name: "app"
+          projected:
+            sources:
+              -
+                configMap:
+                  name: "typing-garden-app"
+              -
+                configMap:
+                  name: "typing-garden-three"
+              -
+                configMap:
+                  name: "typing-garden-media"
+        -
+          name: "data"
+          persistentVolumeClaim:
+            claimName: "typing-garden-data"

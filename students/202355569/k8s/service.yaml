@@ -1,0 +1,12 @@
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "typing-garden"
+spec:
+  selector:
+    app: "typing-garden"
+  ports:
+    -
+      name: "http"
+      port: 8080
+      targetPort: "http"
