@@ -68,10 +68,31 @@ YAML에는 namespace와 Route 주소를 적지 않았기 때문에 누구의 프
 코드를 고칠 때는 `src/` 폴더의 파일을 수정하고 `python3 build.py`를 실행합니다. 그러면 `k8s/configmap*.yaml`이 다시 만들어지고, 이를 적용한 뒤 `oc rollout restart deployment/typing-garden`으로 Pod를 다시 띄우면 됩니다. build.py는 파일을 ConfigMap에 넣을 때 용량 제한(6번 참고)을 넘지 않도록 알아서 나눠 담고, deployment.yaml의 볼륨 목록도 함께 맞춰 줍니다.
 
 ## 5. 배포 결과
-본인 프로젝트(wint123-dev)에 배포해 Pod가 Running 상태인 것과 롤아웃이 성공한 것을 확인했습니다. 공개 주소에서 `/api/ready`도 `{"ready": true}`로 응답했습니다.
+본인 프로젝트(wint123-dev)에 배포해 Pod가 Running 상태인 것과 롤아웃이 성공한 것을 확인했습니다. 모든 리소스를 `oc delete -f k8s/`로 지운 뒤 `oc apply -f k8s/`만으로 다시 배포해도 정상 동작하는 것을 확인했고, 아래는 그 직후의 상태입니다. 공개 주소에서 `/api/ready`도 `{"ready": true}`로 응답했습니다.
 
 - 배포 주소: https://typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com
-- `oc get` 출력: [deployment-status.txt](images/deployment-status.txt)
+- 출력 원본: [deployment-status.txt](images/deployment-status.txt)
+
+```text
+$ oc get deployment,pod,service,route,pvc
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/typing-garden   1/1     1            1           5m13s
+
+NAME                                 READY   STATUS    RESTARTS   AGE
+pod/typing-garden-7f54bbbc9b-nxvv8   1/1     Running   0          5m13s
+
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                               AGE
+service/typing-garden       ClusterIP   172.30.199.142   <none>        8080/TCP                              5m12s
+
+NAME                                     HOST/PORT                                                      PATH   SERVICES        PORT   TERMINATION     WILDCARD
+route.route.openshift.io/typing-garden   typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com          typing-garden   http   edge/Redirect   None
+
+NAME                                       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/typing-garden-data   Bound    pvc-6e753963-0899-46d2-8253-c10b934c9184   1Gi        RWO            gp3            <unset>                 5m13s
+
+$ curl https://typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com/api/ready
+{"ready": true}
+```
 
 ![게임 화면](images/game.png)
 
@@ -80,7 +101,7 @@ YAML에는 namespace와 Route 주소를 적지 않았기 때문에 누구의 프
 - 서버가 다시 계산한 점수가 화면에 나온 점수와 같은지 확인했습니다.
 - `oc rollout restart`로 Pod를 새로 띄운 뒤에도 랭킹과 방명록이 남아 있었습니다.
 
-YAML만으로 처음부터 다시 배포되는지는 아래 명령으로 확인할 수 있습니다. PVC까지 지워지므로 저장된 기록이 모두 사라진다는 점에 주의해야 합니다.
+재배포 검증에 사용한 명령은 아래와 같습니다. PVC까지 지워지므로 저장된 기록이 모두 사라진다는 점에 주의해야 합니다.
 ```bash
 oc delete -f k8s/
 oc apply -f k8s/
