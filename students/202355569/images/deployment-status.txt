@@ -1,18 +1,23 @@
-NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/typing-garden   1/1     1            1           68s
+# oc get deployment,pod,service,route,pvc / configmap (wint123-dev, 2026-10-30 11:41)
+NAME                            READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                                                                                                               SELECTOR
+deployment.apps/typing-garden   1/1     1            1           10h   web          registry.access.redhat.com/ubi9/python-312@sha256:2c7a89f9f1e69f2a00036041ef744b45c8830bebcb2f7194f403ca93729bb0cc   app=typing-garden
 
-NAME                                 READY   STATUS    RESTARTS   AGE
-pod/typing-garden-689565497d-dtqtg   1/1     Running   0          68s
+NAME                                READY   STATUS    RESTARTS   AGE   IP             NODE                          NOMINATED NODE   READINESS GATES
+pod/typing-garden-cd6958df5-9vlhg   1/1     Running   0          47s   10.130.17.79   ip-10-0-74-164.ec2.internal   <none>           <none>
 
-NAME                        TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                               AGE
-service/modelmesh-serving   ClusterIP   None           <none>        8033/TCP,8008/TCP,8443/TCP,2112/TCP   73m
-service/typing-garden       ClusterIP   172.30.93.98   <none>        8080/TCP                              67s
+NAME                        TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                               AGE   SELECTOR
+service/typing-garden       ClusterIP   172.30.93.98   <none>        8080/TCP                              10h   app=typing-garden
 
 NAME                                     HOST/PORT                                                      PATH   SERVICES        PORT   TERMINATION     WILDCARD
 route.route.openshift.io/typing-garden   typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com          typing-garden   http   edge/Redirect   None
 
-NAME                                       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
-persistentvolumeclaim/typing-garden-data   Bound    pvc-903ec135-4adc-4a82-8f33-8eba2a2a4ee9   1Gi        RWO            gp3            <unset>                 68s
+NAME                                       STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE   VOLUMEMODE
+persistentvolumeclaim/typing-garden-data   Bound    pvc-903ec135-4adc-4a82-8f33-8eba2a2a4ee9   1Gi        RWO            gp3            <unset>                 10h   Filesystem
 
-Full delete/apply: PASS
-PVC session persistence across restart: PASS
+NAME                  DATA   AGE
+typing-garden-app     5      10h
+typing-garden-three   1      9h
+typing-garden-media   1      9h
+
+$ curl https://typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com/api/ready
+{"ready": true}

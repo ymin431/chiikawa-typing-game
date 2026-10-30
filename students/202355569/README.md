@@ -1,17 +1,19 @@
-# TYPEFALL — 먼작귀 타이핑
+# BONK GARDEN — 3D 두더지 잡기
 
 학번: **202355569** · 지능형 IoT 플랫폼 컨테이너 과제
 
 ## 1. 컨테이너 소개
-먼작귀(치이카와 친구들)가 하늘에서 내려오는 3D 산성비 타자게임 웹 서비스입니다. 좋아하는 캐릭터와 타건음을 통해 즐겁게 꾸준히 타자를 연습하고 싶어 이 주제를 선택했습니다.
+3D 정원에서 뿅망치로 두더지를 잡는 웹 게임 서비스입니다. 랭킹과 방명록으로 다른 사람의 기록과 한마디를 함께 볼 수 있습니다.
 
-- Three.js로 그린 전체 화면 장면: 잔디밭 그림 위로 구름 그림자가 흐르고, 마우스를 따라 시점이 움직이는 깊이감 있는 배경
-- 치이카와·하치와레·우사기·랏코·모몽가·쿠리만쥬·시사·카니가 단어를 달고 떨어지고, 맞히면 반짝이·파문, 놓치면 잔디 위 먼지가 생깁니다.
-- 60초, 하트 5개, 쉬움·보통·어려움, 한글·영어
-- 점수·콤보·정확도·타/분, 일시정지(Esc)와 탭 비활성화 시 자동 일시정지
-- 키보드 타건음(keyboard.mp3)과 Web Audio로 합성한 정답 차임
-- 왼쪽 패널에서 난이도·언어별 랭킹과 방명록 확인
-- 게임이 끝나면 한 화면에서 프로필 캐릭터를 고르고 랭킹·방명록을 함께 등록
+- Three.js로 직접 만든 3D 정원: 하늘·언덕·나무·버섯·꽃·구름·나비, 툰 셰이딩과 그림자
+- 두더지(+10), 황금 두더지(+30, 짧게 나옴), 토끼(때리면 −20, 콤보 초기화)
+- 쉬움·보통·어려움 3단계: 구멍 6 → 9 → 12개, 단계가 오를수록 더 자주 나오고 더 빨리 숨음
+- 게임 중에는 마우스 커서가 뿅망치로 바뀌고, 맞히면 별·반짝이·파문과 효과음
+- 60초, 점수·콤보·정확도(잡은 수/클릭 수)·평균 반응 속도, 일시정지(Esc)와 탭 비활성화 시 자동 일시정지
+- 시작 화면에서 두더지·황금 두더지·토끼를 3D 모델 그대로 렌더링한 그림으로 소개
+- 가운데 게임 창 양옆에 랭킹(1~3위는 시상대)과 쪽지 모양 방명록, 상단에 누적 플레이 수
+- 점수 100점마다 응원단 토끼가 한 마리씩(최대 12마리) 구멍 뒤에 나타나 폼폼을 흔들며 응원
+- 게임이 끝나면 닉네임으로 랭킹 등록, 방명록은 오른쪽 패널 아래 입력 폼에서 언제든 작성
 
 공식 서비스가 아닌 학습용 팬 프로젝트입니다.
 
@@ -31,7 +33,7 @@ flowchart LR
 | Deployment | Python 서버 Pod 1개 관리, Recreate 업데이트 |
 | Service | app=typing-garden Pod의 http 포트에 연결 |
 | Route | edge TLS 종료, HTTP 요청을 HTTPS로 전환 |
-| ConfigMap | typing-garden-app(코드), typing-garden-three(gzip three.js), typing-garden-media(배경·타건음·캐릭터 이미지, 용량에 따라 -2, -3…으로 나뉨)를 projected 볼륨으로 /app에 함께 읽기 전용 마운트 |
+| ConfigMap | typing-garden-app(코드), typing-garden-three(gzip three.js), typing-garden-media(효과음 등 미디어, 용량에 따라 -2, -3…으로 나뉨)를 projected 볼륨으로 /app에 함께 읽기 전용 마운트 |
 | PVC | 1Gi ReadWriteOnce, /data/garden.db에 랭킹·방명록 저장 |
 | Startup/Liveness/Readiness Probe | 기동·생존·DB 연결 상태 검사 |
 
@@ -54,29 +56,29 @@ oc rollout status deployment/typing-garden
 oc get pods
 oc get route typing-garden
 ```
-학번 폴더 안에서는 `oc apply -f k8s/`를 사용합니다. Route의 HOST 주소에 https://를 붙이면 시작 화면이 열립니다. 배포 YAML에는 namespace와 Route host를 고정하지 않았습니다.
+학번 폴더 안에서는 `oc apply -f k8s/`를 사용합니다. 배포 YAML에는 namespace와 Route host를 고정하지 않았습니다.
 
-설정 변경: deployment.yaml의 GAME_DURATION(초), GAME_LIVES(하트)를 수정합니다. 현재 화면 안내는 기본값 60초/5개에 맞춰져 있으므로 변경 시 ConfigMap의 문구도 함께 수정합니다.
+배포 후 확인:
+- 브라우저: `oc get route typing-garden`의 HOST에 https://를 붙여 접속하면 가운데 3D 두더지 게임 창, 왼쪽 랭킹(시상대), 오른쪽 방명록이 있는 BONK GARDEN 시작 화면이 열립니다.
+- curl: `curl https://<HOST>/api/ready` → `{"ready": true}` (DB 연결까지 확인), `curl https://<HOST>/api/leaderboard?difficulty=normal` → `{"items": [...]}`
+
+설정 변경: deployment.yaml의 GAME_DURATION(초)을 수정합니다. 화면 안내는 기본값 60초에 맞춰져 있으므로 변경 시 문구도 함께 수정합니다.
 코드 변경: `src/`의 파일을 수정하고 `python3 build.py`로 `k8s/configmap*.yaml`을 다시 만든 뒤 적용하고 `oc rollout restart deployment/typing-garden`을 실행합니다. 배포에는 YAML만 필요하며 이미지 빌드는 없습니다.
 `oc apply`는 객체 전체를 256KB 제한이 있는 annotation에 저장하므로, build.py는 코드·three.js·미디어를 ConfigMap으로 나누고 미디어는 250KB 단위로 자동 분할하며 deployment.yaml의 projected 볼륨 목록도 함께 갱신합니다. three.js는 gzip으로 저장하고 서버가 `Content-Encoding: gzip`으로 그대로 보냅니다.
-캐릭터 이미지: `src/assets/`의 `fall-<캐릭터>-<번호>.png`(떨어지는 그림)와 `profile-<캐릭터>.png`(프로필)를 같은 이름의 실제 이미지로 바꾸고 build.py를 실행합니다. 캐릭터 이름은 chiikawa, hachiware, usagi, rakko, momonga, kurimanju, shisa, kani입니다. 서버가 파일 이름으로 이미지를 찾으므로 번호는 2개든 3개든 상관없고, png·webp·jpg를 쓸 수 있습니다. 이미지 한 장은 약 180KB 이하여야 합니다.
-타건음: `src/assets/keyboard.mp3`. 파일이 없으면 합성한 타건음을 사용합니다.
+효과음: 뿅망치·두더지 소리는 Web Audio로 합성하고, 버튼 클릭음은 `src/assets/keyboard.mp3`를 사용합니다.
 
 ## 5. 배포 결과 및 검증
 - 본인 프로젝트 wint123-dev에 배포, Deployment 롤아웃 성공 확인
 - 공개 HTTPS Route에서 `/api/ready`가 `{"ready": true}` 응답
-- 로컬 API 테스트: 정답 점수, 놓친 단어, 게임 종료, 랭킹·방명록 동시 등록/조회, 기존 DB 컬럼 자동 추가 통과
-- 브라우저: 초기 화면, 연습 시작, 결과 화면 확인
-- 제출 YAML 전체 삭제 후 재적용 및 롤아웃 성공 확인
-- Pod 재시작 전 세션을 재시작 후 완료: PVC 유지 검증 통과
-- 브라우저 영문 정답, 100% 정확도, 일시정지·재개·결과 화면 검증
-- 실제 한글 IME 조합 입력은 사용자 환경에서 추가 확인 필요
+- 로컬 API 테스트: 난이도별 구멍 수(6/9/12)와 출현 계획 생성, 서버 점수 재계산이 화면 점수와 일치, 랭킹·방명록 동시 등록/조회, 기존 DB 컬럼 자동 추가
+- 브라우저(데스크톱·모바일 크기): 시작 화면, 난이도 전환, 게임 진행·뿅망치 커서·타격 효과, 일시정지, 결과·등록 화면 확인
+- Pod 재시작(`oc rollout restart`) 후에도 PVC의 랭킹·방명록 유지 확인
 
 배포 주소: https://typing-garden-wint123-dev.apps.rm3.7wse.p1.openshiftapps.com
 
 ![게임 화면](images/game.png)
 
-실제 리소스 상태: [deployment-status.txt](images/deployment-status.txt)
+`oc get` 출력: [deployment-status.txt](images/deployment-status.txt)
 
 초기화 재배포 검증은 테스트 데이터만 있는 상태에서 진행합니다. 아래 명령은 PVC까지 삭제하므로 기존 기록이 사라질 수 있습니다.
 ```bash
@@ -85,30 +87,36 @@ oc apply -f k8s/
 oc rollout status deployment/typing-garden
 ```
 
-## 6. 구현 기준과 한계
-- 3D 화면은 WebGL이 필요합니다. 지원하지 않는 브라우저에서는 안내 문구를 보여줍니다.
-- 정확도: 제출 문자열과 목표 문자열의 편집거리 기준. 각 제출의 max(목표 길이,입력 길이)에서 편집거리를 뺀 값의 합 / 비교 길이 합 ×100. Enter 전에 수정한 오타·놓친 단어는 제외합니다.
-- 속도: 완성한 정답 글자 수 / 일시정지를 제외한 플레이 시간(분). 한글 한 음절을 한 글자로 셉니다. 물리적 키 입력 타수와 다릅니다.
-- 점수: 단어 글자 수×10×난이도 계수(1/1.3/1.6), 반올림 후 min(콤보,20)×5 추가.
-- 서버는 세션·시간·단어 순서·중복 완료를 확인하고 입력 기록으로 점수를 재계산합니다. 클라이언트 입력 기록을 신뢰하는 부분이 있어 전문적인 부정행위 방지 시스템은 아닙니다.
-- 랭킹은 난이도·언어별 상위 30개, 방명록은 최근 60개를 보여줍니다. 게임 한 판(세션)당 한 번만 등록할 수 있고, 잡은 친구가 없으면 방명록만 남길 수 있습니다.
-- 닉네임 1~12자, 방명록 1~140자. SQL 매개변수 처리, 화면 textContent 렌더링, 요청 크기 제한을 적용합니다.
-- 난이도·언어·소리 설정은 현재 브라우저에만 남습니다.
-- 학습용 소규모 서버입니다. 회원 인증·대규모 트래픽 처리는 포함하지 않습니다.
+## 6. 어려웠던 점
+- **ConfigMap이 `oc apply`에서 거부됨**: three.js(약 670KB)를 ConfigMap에 넣자 `metadata.annotations: Too long` 오류가 났습니다. `oc apply`가 객체 전체를 256KB 제한의 last-applied annotation에 저장하기 때문이었습니다. three.js를 gzip(약 166KB)으로 저장해 서버가 `Content-Encoding: gzip`으로 보내게 하고, 코드·three.js·미디어를 ConfigMap 3개로 나눠 projected 볼륨 하나로 /app에 합쳤습니다. 이 분할은 build.py가 자동으로 합니다.
+- **코드를 바꿔도 화면이 그대로임**: ConfigMap만 바뀌고 Deployment는 그대로라 `oc apply` 결과가 `unchanged`였고, 이미 실행 중인 Python 서버가 옛 파일을 계속 제공했습니다. 적용 후 `oc rollout restart deployment/typing-garden`으로 Pod를 새로 띄워 해결했습니다.
+- **기존 DB와 새 버전의 스키마 차이**: 기능을 바꾸며 테이블에 컬럼이 늘었는데 PVC의 기존 DB에는 없었습니다. 서버 시작 시 `PRAGMA table_info`로 확인해 없는 컬럼만 `ALTER TABLE`로 추가하도록 했습니다.
+- **효과음 파일 다운로드 차단**: Pixabay가 스크립트 다운로드를 막아(403) 직접 받은 mp3를 앞뒤 무음을 잘라 넣고, 게임 효과음은 Web Audio로 합성했습니다.
+- **점수 조작 방지**: 브라우저가 보낸 점수를 그대로 믿지 않도록 서버가 출현 계획을 미리 만들고, 타격 기록만 받아 점수를 다시 계산합니다.
 
 ## 7. AI·참고자료 활용 내역
 - Codex: 과제 요구사항 분석, SVG/CSS 디자인, 게임·API·YAML·README 초안 작성과 실행 검증 지원
-- Claude Code: Three.js 3D 화면 재작성, 랭킹·방명록 패널과 통합 등록, ConfigMap 자동 분할 build.py 작성
+- Claude Code: Three.js 3D 두더지 잡기 게임·정원 제작, 서버 출현 계획·점수 검증, 랭킹·방명록 패널과 통합 등록, ConfigMap 자동 분할 build.py 작성
 - three.js r160 (MIT): https://threejs.org
-- 타건음: Pixabay "spacebar click keyboard" https://pixabay.com/sound-effects/film-special-effects-spacebar-click-keyboard-199448/
-- 배경 그림: 직접 준비한 잔디밭 이미지(오른쪽 테두리를 잘라 WebP로 변환)
-- 캐릭터·프로필 이미지: 현재는 자리표시용 그림이며 직접 준비한 이미지로 교체
+- 버튼 클릭음: Pixabay "spacebar click keyboard" https://pixabay.com/sound-effects/film-special-effects-spacebar-click-keyboard-199448/
+- 3D 정원·동물: three.js 기본 도형으로 직접 모델링
 - 제공된 과제 안내: 나만의 컨테이너 만들기, 3~10쪽
 - 제공된 강의자료: 실제 운영 환경 고려사항, OpenShift 실습(2), 핸즈온 워크샵 매뉴얼
 - https://kubernetes.io/docs/concepts/configuration/configmap/
 - https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 - https://docs.python.org/3/library/sqlite3.html
-- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/isComposing
 - https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay
 
 제출 전 실제 실행 결과를 직접 확인하고, YAML 각 항목의 역할을 설명할 수 있도록 검토합니다.
+
+## 부록. 구현 기준과 한계
+- 3D 화면은 WebGL이 필요합니다. 지원하지 않는 브라우저에서는 안내 문구를 보여줍니다.
+- 출현 계획: 게임 시작 시 서버가 60초 동안의 출현(시간·구멍·머무는 시간·종류)을 미리 만들고, 같은 구멍은 이전 동물이 들어간 뒤에만 다시 씁니다.
+- 난이도: 쉬움 구멍 6·간격 약 0.95초·머무름 1.35초, 보통 9·0.72초·1.05초, 어려움 12·0.5초·0.78초. 황금 두더지는 머무는 시간이 25% 짧습니다.
+- 점수: 두더지 10·황금 30에 난이도 계수(1/1.3/1.6)를 곱하고 min(콤보,20)×2 추가. 토끼는 −20×계수, 콤보 초기화. 두더지를 놓치면 콤보가 끊깁니다. 최종 점수는 0 미만이 되지 않습니다.
+- 정확도: 잡은 두더지 수 / 클릭 수 ×100. 반응 속도: 두더지가 나온 뒤 맞힐 때까지의 평균(ms).
+- 서버는 세션·시간·출현 시간 안의 타격인지·중복 타격을 확인하고 기록으로 점수를 재계산합니다. 클릭 수와 타격 기록은 클라이언트 값을 신뢰하므로 전문적인 부정행위 방지 시스템은 아닙니다.
+- 랭킹은 난이도별 상위 30개, 방명록은 최근 60개를 보여줍니다. 랭킹은 게임 한 판(세션)당 한 번, 잡은 두더지가 있을 때만 등록할 수 있습니다. 방명록은 같은 IP에서 10초에 한 번 남길 수 있습니다.
+- 닉네임 1~12자, 방명록 1~140자. SQL 매개변수 처리, 화면 textContent 렌더링, 요청 크기 제한을 적용합니다.
+- 난이도·소리·닉네임은 현재 브라우저에만 남습니다.
+- 학습용 소규모 서버입니다. 회원 인증·대규모 트래픽 처리는 포함하지 않습니다.
