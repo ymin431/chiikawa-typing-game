@@ -39,9 +39,6 @@ spec:
             -
               name: "GAME_DURATION"
               value: "60"
-            -
-              name: "GAME_LIVES"
-              value: "5"
           resources:
             requests:
               cpu: "50m"

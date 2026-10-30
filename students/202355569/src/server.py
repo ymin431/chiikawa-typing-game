@@ -1,5 +1,5 @@
-"""Chiikawa typing garden: dependency-free, single-Pod acid-rain typing game service."""
-import gzip, json, os, random, re, secrets, sqlite3, time, unicodedata
+"""BONK GARDEN: dependency-free, single-Pod whack-a-mole game service with ranking and guestbook."""
+import gzip, json, os, random, secrets, sqlite3, time, unicodedata
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -9,30 +9,17 @@ DATA = Path(os.environ.get('DATA_DIR', '/tmp/typing-garden-data'))
 DATA.mkdir(parents=True, exist_ok=True)
 DB = DATA / 'garden.db'
 DURATION = int(os.environ.get('GAME_DURATION', '60'))
-LIVES = int(os.environ.get('GAME_LIVES', '5'))
-RULES = {'easy': {'interval':3.4,'fall':14,'factor':1}, 'normal':{'interval':2.6,'fall':11,'factor':1.3}, 'hard':{'interval':1.8,'fall':8,'factor':1.6}}
-WORDS = {
- 'ko': '구름 하늘 바람 잔디 소풍 우유 딸기 복숭아 고양이 토끼 햇살 별빛 달빛 꽃잎 이슬 나무 숲속 바다 파도 여름 봄날 가을 겨울 마음 친구 행복 웃음 선물 산책 노을 무지개 솜사탕 도토리 조약돌 반짝임 민들레 해바라기 물방울 사탕 리본 쿠키 푸딩 마카롱 초콜릿 치이카와 하치와레 우사기 모몽가 랏코 밤하늘 별사탕 다정함 포근함 용기 응원 약속 추억 멜로디 작은꿈 초록빛 나비 튤립 새싹 꽃밭 오솔길 바구니 도시락 딸기우유 크루아상 고구마 감자 요정 소원 기적 오렌지 레몬 민트 피크닉 구름빵 눈송이 은하수 아침 햇볕 고요함 두근두근 사뿐사뿐 몽글몽글 반짝반짝 데굴데굴'.split(),
- 'en': 'cloud sky breeze grass picnic milk berry peach kitten rabbit sunshine star moon flower dew tree forest ocean wave summer spring autumn winter heart friend happy smile gift walk sunset rainbow cotton acorn pebble sparkle dandelion sunflower raindrop candy ribbon cookie pudding chocolate dream courage cheer promise memory melody butterfly garden basket lemon mint morning snowflake cozy little gentle blossom wonder'.split()
-}
+# More holes, shorter stays and faster spawns at each level.
+RULES = {'easy': {'holes':6,'cols':3,'interval':.95,'stay':1.35,'factor':1},
+         'normal': {'holes':9,'cols':3,'interval':.72,'stay':1.05,'factor':1.3},
+         'hard': {'holes':12,'cols':4,'interval':.5,'stay':.78,'factor':1.6}}
+KINDS = {'easy': (('mole',.84),('gold',.08),('bunny',.08)), 'normal': (('mole',.78),('gold',.08),('bunny',.14)), 'hard': (('mole',.74),('gold',.08),('bunny',.18))}
+POINTS = {'mole':10,'gold':30,'bunny':-20}
 
 # path -> (file in /app, content type, cacheable). three.js is stored pre-gzipped to keep the ConfigMap small.
 STATIC = {'/':('index.html','text/html; charset=utf-8',False),'/style.css':('style.css','text/css; charset=utf-8',False),'/app.js':('app.js','text/javascript; charset=utf-8',False),
  '/favicon.svg':('favicon.svg','image/svg+xml',True),'/three.module.min.js':('three.module.min.js.gz','text/javascript; charset=utf-8',True),
- '/meadow.webp':('meadow.webp','image/webp',True),'/keyboard.mp3':('keyboard.mp3','audio/mpeg',True)}
-# Character images are discovered by name: fall-<character>-<n>.<ext> drop from the sky, profile-<character>.<ext> are avatars.
-AVATARS = ('chiikawa','hachiware','usagi','rakko','momonga','kurimanju','shisa','kani')
-IMAGE = re.compile(r'^(fall|profile)-([a-z]+)(?:-(\d+))?\.(png|webp|jpg|jpeg|gif)$')
-IMAGE_TYPES = {'png':'image/png','webp':'image/webp','jpg':'image/jpeg','jpeg':'image/jpeg','gif':'image/gif'}
-
-def character_assets():
- fall={a:[] for a in AVATARS}; profiles={}
- for f in sorted(ROOT.iterdir()):
-  m=IMAGE.match(f.name)
-  if not m or m.group(2) not in AVATARS: continue
-  if m.group(1)=='fall': fall[m.group(2)].append('/'+f.name)
-  else: profiles[m.group(2)]='/'+f.name
- return {'fall':{k:v for k,v in fall.items() if v},'profiles':profiles,'names':list(AVATARS)}
+ '/click.mp3':('keyboard.mp3','audio/mpeg',True)}
 
 def connect():
  c=sqlite3.connect(DB, timeout=10); c.row_factory=sqlite3.Row; c.execute('PRAGMA busy_timeout=10000'); return c
@@ -43,10 +30,11 @@ def init_db():
 CREATE TABLE IF NOT EXISTS scores (id INTEGER PRIMARY KEY, session TEXT UNIQUE NOT NULL, nickname TEXT NOT NULL, difficulty TEXT NOT NULL, language TEXT NOT NULL, mode TEXT NOT NULL, score INTEGER NOT NULL, accuracy REAL NOT NULL, cpm REAL NOT NULL, combo INTEGER NOT NULL, created TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
 CREATE INDEX IF NOT EXISTS score_sort ON scores(mode,difficulty,language,score DESC);
 CREATE TABLE IF NOT EXISTS guestbook (id INTEGER PRIMARY KEY, nickname TEXT NOT NULL, message TEXT NOT NULL, avatar TEXT NOT NULL, created TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')));
+CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, last REAL NOT NULL);
 ''')
   # Columns added after the first release; existing databases on the PVC are migrated in place.
-  for table,column in (('scores','avatar'),('guestbook','session')):
-   if column not in [r['name'] for r in c.execute(f'PRAGMA table_info({table})')]: c.execute(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
+  for table,column,kind in (('scores','reaction','REAL'),('guestbook','session','TEXT')):
+   if column not in [r['name'] for r in c.execute(f'PRAGMA table_info({table})')]: c.execute(f'ALTER TABLE {table} ADD COLUMN {column} {kind}')
 
 def clean(value, maximum, name, minimum=1):
  if not isinstance(value,str): raise ValueError(name+'을 확인해 주세요.')
@@ -54,51 +42,44 @@ def clean(value, maximum, name, minimum=1):
  if not minimum<=len(value)<=maximum or any(ord(ch)<32 for ch in value): raise ValueError(f'{name}은 {minimum}~{maximum}자로 입력해 주세요.')
  return value
 
-def distance(a,b):
- row=list(range(len(b)+1))
- for i,x in enumerate(a,1):
-  nxt=[i]
-  for j,y in enumerate(b,1): nxt.append(min(nxt[-1]+1,row[j]+1,row[j-1]+(x!=y)))
-  row=nxt
- return row[-1]
+def make_deck(difficulty):
+ """Pre-plan every pop so the server can verify hits: (time, hole, how long it stays up, which critter)."""
+ rule=RULES[difficulty]; rng=random.SystemRandom(); kinds,weights=zip(*KINDS[difficulty])
+ busy=[0.0]*rule['holes']; deck=[]; t=.8
+ while t<DURATION-.3:
+  free=[h for h in range(rule['holes']) if busy[h]<=t]
+  if free:
+   kind=rng.choices(kinds,weights)[0]; stay=round(rule['stay']*(.75 if kind=='gold' else 1)*rng.uniform(.9,1.1),3); hole=rng.choice(free)
+   deck.append({'id':len(deck),'at':round(t,3),'hole':hole,'stay':stay,'kind':kind}); busy[hole]=t+stay+.35
+  t+=rule['interval']*rng.uniform(.7,1.3)
+ return deck
 
-def summarize(config, attempts, elapsed):
- if not isinstance(attempts,list) or len(attempts)>600: raise ValueError('입력 기록이 너무 많습니다.')
- deck=config['deck']; mode=config['mode']; rule=RULES[config['difficulty']]
- used=set(); attempted=set(); good=total=score=combo=best=0; misses=[]; wrong=[]; previous=-1; next_id=0; actual=elapsed; hits=[]; ticks=[0]*12
+def summarize(config, hits, clicks, elapsed):
+ if not isinstance(hits,list) or len(hits)>600: raise ValueError('기록이 너무 많아요.')
+ if isinstance(clicks,bool) or not isinstance(clicks,int) or not len(hits)<=clicks<=5000: raise ValueError('클릭 기록이 맞지 않아요.')
+ deck=config['deck']; rule=config['rule']; used=set(); escaped=set(); previous=-1; score=combo=best=caught=bunnies=0; reactions=[]
  def expire(t):
-  nonlocal combo, actual
-  if mode!='rain': return False
-  for item in deck:
-   if item['id'] not in used and item['at']+rule['fall']<=t:
-    used.add(item['id']); misses.append(item['text']); combo=0
-    if len(misses)>=LIVES:
-     actual=item['at']+rule['fall']; return True
-  return False
- for a in attempts:
-  if not isinstance(a,dict): raise ValueError('입력 기록 형식이 잘못됐어요.')
-  at=a.get('at'); idx=a.get('id'); value=a.get('value')
-  if isinstance(at,bool) or not isinstance(at,(int,float)) or not 0<=at<=elapsed+.15 or at<previous: raise ValueError('플레이 시간과 입력 기록이 맞지 않아요.')
-  previous=at
-  if expire(at): break
-  if isinstance(idx,bool) or not isinstance(idx,int) or not 0<=idx<len(deck): raise ValueError('단어 기록이 맞지 않아요.')
-  item=deck[idx]
-  if idx in used or (mode=='rain' and at<item['at']) or (mode!='rain' and idx!=next_id): raise ValueError('아직 입력할 수 없는 단어예요.')
-  value=clean(value,160,'입력')
-  target=item['text']; span=max(len(target),len(value)); good+=max(0,span-distance(target,value)); total+=span; attempted.add(idx)
-  if value==target:
-   combo+=1; best=max(best,combo); score+=round(len(target)*10*rule['factor'])+min(combo,20)*5
-   used.add(idx); hits.append(target); ticks[min(11,int(at//5))]+=len(target)
-   if mode!='rain': next_id+=1
+  nonlocal combo
+  for p in deck:
+   if p['id'] not in used and p['id'] not in escaped and p['kind']!='bunny' and p['at']+p['stay']<=t: escaped.add(p['id']); combo=0
+ for h in hits:
+  if not isinstance(h,dict): raise ValueError('기록 형식이 잘못됐어요.')
+  at=h.get('at'); idx=h.get('id')
+  if isinstance(at,bool) or not isinstance(at,(int,float)) or not 0<=at<=elapsed+.15 or at<previous: raise ValueError('플레이 시간과 기록이 맞지 않아요.')
+  if isinstance(idx,bool) or not isinstance(idx,int) or not 0<=idx<len(deck) or idx in used: raise ValueError('두더지 기록이 맞지 않아요.')
+  p=deck[idx]
+  if not p['at']<=at<=p['at']+p['stay']+.12: raise ValueError('이미 들어간 두더지예요.')
+  previous=at; expire(at); used.add(idx)
+  if p['kind']=='bunny': bunnies+=1; combo=0; score+=round(POINTS['bunny']*rule['factor'])
   else:
-   combo=0
-   if target not in wrong: wrong.append(target)
+   combo+=1; best=max(best,combo); caught+=1; reactions.append(at-p['at'])
+   score+=round(POINTS[p['kind']]*rule['factor'])+min(combo,20)*2
  expire(elapsed)
- correct_chars=sum(map(len,hits)); actual=max(.1,actual)
- return {'score':score,'accuracy':round(100*good/total,1) if total else 0,'cpm':round(correct_chars/(actual/60)), 'combo':best,'hits':len(hits),'misses':len(misses),'wrong':list(dict.fromkeys(wrong+misses)), 'elapsed':round(actual,1),'timeline':ticks,'mode':mode,'difficulty':config['difficulty'],'language':config['language'],'attempts':len(attempts),'correct_chars':correct_chars}
+ return {'score':max(0,score),'accuracy':round(100*caught/clicks,1) if clicks else 0,'reaction':round(1000*sum(reactions)/len(reactions)) if reactions else 0,
+  'combo':best,'hits':caught,'bunnies':bunnies,'escaped':len(escaped),'clicks':clicks,'elapsed':round(max(.1,elapsed),1),'mode':'mole','difficulty':config['difficulty']}
 
 class Handler(BaseHTTPRequestHandler):
- server_version='TypingGarden/1.0'
+ server_version='BonkGarden/1.0'
  def log_message(self, fmt, *args):
   # Never log query strings, request bodies or credentials.
   print(f'{self.command} {urlparse(self.path).path} {args[1] if len(args)>1 else ""}',flush=True)
@@ -119,19 +100,15 @@ class Handler(BaseHTTPRequestHandler):
     with connect() as c: c.execute('SELECT 1 FROM sessions LIMIT 1').fetchone()
     return self.send(200,{'ready':True})
    if p.path=='/api/leaderboard':
-    difficulty=q.get('difficulty',['normal'])[0]; language=q.get('language',['ko'])[0]; mode=q.get('mode',['rain'])[0]
-    with connect() as c: rows=c.execute('SELECT nickname,avatar,score,accuracy,cpm,combo,created FROM scores WHERE difficulty=? AND language=? AND mode=? ORDER BY score DESC, accuracy DESC, created ASC LIMIT 30',(difficulty,language,mode)).fetchall()
+    difficulty=q.get('difficulty',['normal'])[0]
+    with connect() as c: rows=c.execute("SELECT nickname,score,accuracy,reaction,combo,created FROM scores WHERE mode='mole' AND difficulty=? ORDER BY score DESC, accuracy DESC, created ASC LIMIT 30",(difficulty,)).fetchall()
     return self.send(200,{'items':[dict(r) for r in rows]})
    if p.path=='/api/guestbook':
-    with connect() as c: rows=c.execute('SELECT nickname,message,avatar,created FROM guestbook ORDER BY id DESC LIMIT 60').fetchall()
+    with connect() as c: rows=c.execute('SELECT nickname,message,created FROM guestbook ORDER BY id DESC LIMIT 60').fetchall()
     return self.send(200,{'items':[dict(r) for r in rows]})
-   if p.path=='/api/assets': return self.send(200,character_assets())
    if p.path=='/api/stats':
-    with connect() as c:
-     runs=c.execute('SELECT COUNT(*) FROM sessions WHERE summary IS NOT NULL').fetchone()[0]
+    with connect() as c: runs=c.execute('''SELECT COUNT(*) FROM sessions WHERE summary LIKE '%"mode": "mole"%' ''').fetchone()[0]
     return self.send(200,{'games':runs})
-   m=IMAGE.match(p.path[1:])
-   if m and (ROOT/p.path[1:]).is_file(): return self.send(200,(ROOT/p.path[1:]).read_bytes(),IMAGE_TYPES[m.group(4)],{'Cache-Control':'public, max-age=3600'})
    if p.path not in STATIC or not (ROOT/STATIC[p.path][0]).is_file(): return self.send(404,{'error':'페이지를 찾을 수 없어요.'})
    fn,typ,cache=STATIC[p.path]; raw=(ROOT/fn).read_bytes(); headers={'Cache-Control':'public, max-age=86400' if cache else 'no-store'}
    if fn.endswith('.gz'):
@@ -153,14 +130,9 @@ class Handler(BaseHTTPRequestHandler):
    with connect() as c:
     c.execute('BEGIN IMMEDIATE')
     if p=='/api/start':
-     mode=data.get('mode','rain'); difficulty=data.get('difficulty','normal'); lang=data.get('language','ko')
-     if mode!='rain' or difficulty not in RULES or lang not in WORDS: raise ValueError('게임 설정을 확인해 주세요.')
-     source=[w for w in WORDS[lang] if len(w)<=({'easy':4,'normal':6,'hard':12}[difficulty] if lang=='ko' else {'easy':6,'normal':9,'hard':15}[difficulty])]
-     shuffled=[]
-     while len(shuffled)<160:
-      batch=source[:]; random.SystemRandom().shuffle(batch); shuffled.extend(batch)
-     deck=[{'id':i,'text':w,'at':round(.5+i*RULES[difficulty]['interval'],2),'lane':(i*3+random.randrange(3))%7,'character':i%3} for i,w in enumerate(shuffled[:160])]
-     config={'mode':mode,'difficulty':difficulty,'language':lang,'duration':DURATION,'lives':LIVES,'rule':RULES[difficulty],'deck':deck}; sid=secrets.token_urlsafe(24)
+     difficulty=data.get('difficulty','normal')
+     if difficulty not in RULES: raise ValueError('난이도를 확인해 주세요.')
+     config={'mode':'mole','difficulty':difficulty,'duration':DURATION,'rule':RULES[difficulty],'deck':make_deck(difficulty)}; sid=secrets.token_urlsafe(24)
      c.execute('DELETE FROM sessions WHERE created < ? AND summary IS NULL',(now-86400,))
      c.execute('INSERT INTO sessions(id,created,config) VALUES(?,?,?)',(sid,now,json.dumps(config,ensure_ascii=False)))
      return self.send(201,{'session':sid,**config})
@@ -171,17 +143,12 @@ class Handler(BaseHTTPRequestHandler):
      if row is None: raise ValueError('게임이 만료됐어요. 다시 시작해 주세요.')
      config=json.loads(row['config'])
      if p=='/api/register':
-      # One form after a game: the score goes to the ranking (if anything was caught) and an optional note to the guestbook.
       if row['summary'] is None: raise ValueError('게임을 먼저 완료해 주세요.')
-      nickname=clean(data.get('nickname'),12,'닉네임'); summary=json.loads(row['summary']); avatar=data.get('avatar')
-      if avatar not in AVATARS: raise ValueError('프로필 캐릭터를 골라 주세요.')
-      message=data.get('message') or ''
-      if message: message=clean(message,140,'방명록')
-      if c.execute('SELECT 1 FROM scores WHERE session=?',(sid,)).fetchone() or c.execute('SELECT 1 FROM guestbook WHERE session=?',(sid,)).fetchone(): raise ValueError('이미 등록한 기록이에요.')
-      if summary['hits']==0 and not message: raise ValueError('잡은 친구가 없으면 방명록만 남길 수 있어요.')
-      if summary['hits']>0: c.execute('INSERT INTO scores(session,nickname,avatar,difficulty,language,mode,score,accuracy,cpm,combo) VALUES(?,?,?,?,?,?,?,?,?,?)',(sid,nickname,avatar,config['difficulty'],config['language'],config['mode'],summary['score'],summary['accuracy'],summary['cpm'],summary['combo']))
-      if message: c.execute('INSERT INTO guestbook(nickname,message,avatar,session) VALUES(?,?,?,?)',(nickname,message,avatar,sid))
-      return self.send(201,{'ranked':summary['hits']>0,'note':bool(message)})
+      nickname=clean(data.get('nickname'),12,'닉네임'); summary=json.loads(row['summary'])
+      if summary['hits']==0: raise ValueError('잡은 두더지가 있어야 랭킹에 올릴 수 있어요.')
+      if c.execute('SELECT 1 FROM scores WHERE session=?',(sid,)).fetchone(): raise ValueError('이미 등록한 기록이에요.')
+      c.execute('INSERT INTO scores(session,nickname,difficulty,language,mode,score,accuracy,cpm,reaction,combo) VALUES(?,?,?,?,?,?,?,?,?,?)',(sid,nickname,config['difficulty'],'-','mole',summary['score'],summary['accuracy'],0,summary['reaction'],summary['combo']))
+      return self.send(201,{'ok':True})
      if row['summary'] is not None:
       if p=='/api/finish': return self.send(200,json.loads(row['summary']))
       raise ValueError('이미 끝난 게임이에요.')
@@ -195,7 +162,13 @@ class Handler(BaseHTTPRequestHandler):
       return self.send(200,{'ok':True})
      client_elapsed=data.get('elapsed')
      if isinstance(client_elapsed,bool) or not isinstance(client_elapsed,(int,float)) or not .1<=client_elapsed<=DURATION+.5 or client_elapsed>elapsed+1.5: raise ValueError('게임 시간을 확인할 수 없어요.')
-     result=summarize(config,data.get('attempts',[]),min(DURATION,client_elapsed)); c.execute('UPDATE sessions SET summary=? WHERE id=?',(json.dumps(result,ensure_ascii=False),sid)); return self.send(200,result)
+     result=summarize(config,data.get('hits',[]),data.get('clicks',0),min(DURATION,client_elapsed)); c.execute('UPDATE sessions SET summary=? WHERE id=?',(json.dumps(result,ensure_ascii=False),sid)); return self.send(200,result)
+    if p=='/api/guestbook':
+     name=clean(data.get('nickname'),12,'닉네임'); msg=clean(data.get('message'),140,'방명록')
+     key='guest:'+self.client_address[0]; last=c.execute('SELECT last FROM rate_limits WHERE key=?',(key,)).fetchone()
+     if last and now-last[0]<10: return self.send(429,{'error':'조금만 쉬어 가요. 10초 뒤에 다시 남길 수 있어요.'})
+     c.execute('INSERT OR REPLACE INTO rate_limits VALUES(?,?)',(key,now)); c.execute('INSERT INTO guestbook(nickname,message,avatar) VALUES(?,?,?)',(name,msg,''))
+     return self.send(201,{'ok':True})
     return self.send(404,{'error':'요청을 찾을 수 없어요.'})
   except (ValueError,TypeError,KeyError,OverflowError): self.send(400,{'error':str(__import__('sys').exc_info()[1]) or '입력을 확인해 주세요.'})
   except sqlite3.Error: self.send(503,{'error':'기록을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.'})
@@ -204,4 +177,4 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
  init_db(); port=int(os.environ.get('PORT','8080')); host=os.environ.get('BIND_HOST','0.0.0.0')
  server=ThreadingHTTPServer((host,port),Handler); server.daemon_threads=True
- print(f'Typing garden listening on http://{host}:{port}',flush=True); server.serve_forever()
+ print(f'Bonk garden listening on http://{host}:{port}',flush=True); server.serve_forever()
